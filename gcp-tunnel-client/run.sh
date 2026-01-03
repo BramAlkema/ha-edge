@@ -107,8 +107,8 @@ build_chisel_args() {
     # nginx on Cloud Run listens on :8080, proxies HTTP to :9001
     # chisel listens on :9000 for WebSocket control
     # Format: R:remote_port:local_host:local_port
-    # Try direct connection to HA Core via Docker internal network (HTTP)
-    CHISEL_ARGS+=("R:9001:homeassistant:8123")
+    # Reverse tunnel: server listens on 9001, forwards to local socat proxy (8888)
+    CHISEL_ARGS+=("R:9001:127.0.0.1:8888")
 }
 
 # Calculate backoff with jitter
@@ -149,10 +149,10 @@ start_socat_proxy() {
     pkill -f "socat.*TCP-LISTEN:8888" 2>/dev/null || true
 
     # Start socat in background
-    # TCP-LISTEN: accept HTTP on 8888
-    # TCP: forward to supervisor's internal proxy (port 80, plain HTTP)
-    # The supervisor proxies /core requests to HA Core
-    socat TCP-LISTEN:8888,fork,reuseaddr TCP:supervisor:80 &
+    # TCP-LISTEN: accept plain HTTP on 8888
+    # OPENSSL: connect to HA with SSL
+    # openssl-commonname= to set SNI header correctly
+    socat TCP-LISTEN:8888,fork,reuseaddr OPENSSL:homeassistant:8123,verify=0,openssl-commonname=homeassistant &
     socat_pid=$!
 
     bashio::log.info "socat started with PID: $socat_pid"
@@ -174,7 +174,7 @@ run_tunnel() {
     bashio::log.info "User: $AUTH_USER"
     bashio::log.info "Local port: $LOCAL_PORT"
     bashio::log.info "Keepalive: $KEEPALIVE"
-    bashio::log.info "Tunnel: R:9001:homeassistant:8123 (direct)"
+    bashio::log.info "Tunnel: R:9001:127.0.0.1:8888 -> homeassistant:8123 (HTTPS via socat)"
 
     # Start chisel in background
     /usr/local/bin/chisel "${CHISEL_ARGS[@]}" &
@@ -210,11 +210,11 @@ main() {
     read_config
     build_chisel_args
 
-    # Note: Trying direct connection first, socat disabled
-    # if ! start_socat_proxy; then
-    #     bashio::log.fatal "Failed to start socat SSL proxy"
-    #     exit 1
-    # fi
+    # Start socat SSL proxy (converts HTTP to HTTPS for HA Core)
+    if ! start_socat_proxy; then
+        bashio::log.fatal "Failed to start socat SSL proxy"
+        exit 1
+    fi
 
     # Main reconnect loop
     while true; do
