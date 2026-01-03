@@ -241,29 +241,33 @@ start_nginx_proxy() {
     bashio::log.info "Starting nginx proxy (8888 -> homeassistant:8123 HTTPS)..."
 
     # Create required temp directories
-    mkdir -p /tmp/nginx-client-body /tmp/nginx-proxy /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi
+    mkdir -p /tmp/nginx-client-body /tmp/nginx-proxy /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi /run/nginx
 
     # Stop any existing nginx
     nginx -s stop 2>/dev/null || pkill nginx 2>/dev/null || true
     sleep 1
 
-    # Start nginx
-    nginx
-    local exit_code=$?
-
-    if [ "$exit_code" -ne 0 ]; then
-        bashio::log.error "nginx failed to start (exit code: $exit_code)"
+    # Test nginx config first
+    bashio::log.info "Testing nginx configuration..."
+    if ! nginx -t 2>&1; then
+        bashio::log.error "nginx config test failed"
         return 1
     fi
 
-    bashio::log.info "nginx started successfully"
+    # Start nginx (keep in foreground for better process management)
+    bashio::log.info "Starting nginx..."
+    nginx -g 'daemon off;' &
+    local nginx_pid=$!
+
+    sleep 2
 
     # Verify it's running
-    sleep 1
-    if ! pgrep -x nginx >/dev/null; then
-        bashio::log.error "nginx not running after start"
+    if ! kill -0 "$nginx_pid" 2>/dev/null; then
+        bashio::log.error "nginx not running after start (pid: $nginx_pid)"
         return 1
     fi
+
+    bashio::log.info "nginx started successfully (pid: $nginx_pid)"
 }
 
 # Run chisel and monitor
