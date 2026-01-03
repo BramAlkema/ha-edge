@@ -12,12 +12,12 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 # Install dependencies and chisel
-# socat is needed to proxy HTTP->HTTPS to HA Core (which requires SSL)
+# nginx proxies HTTP->HTTPS to HA Core (which requires SSL)
 RUN apk add --no-cache \
         curl \
         ca-certificates \
         jq \
-        socat \
+        nginx \
     && case "${TARGETARCH}${TARGETVARIANT}" in \
         "amd64") CHISEL_ARCH="amd64" ;; \
         "arm64") CHISEL_ARCH="arm64" ;; \
@@ -38,9 +38,10 @@ RUN apk add --no-cache \
     # Cleanup
     && rm -rf /tmp/*
 
-# Copy run script
+# Copy run script and nginx config
 COPY run.sh /run.sh
-RUN chmod +x /run.sh
+COPY nginx.conf /etc/nginx/nginx.conf
+RUN chmod +x /run.sh && mkdir -p /tmp/nginx-client-body
 
 # Health check - verify chisel binary exists and is executable
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

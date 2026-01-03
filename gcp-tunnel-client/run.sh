@@ -28,8 +28,8 @@ shutdown() {
         kill -TERM "$chisel_pid" 2>/dev/null || true
         wait "$chisel_pid" 2>/dev/null || true
     fi
-    # Also stop socat proxy
-    pkill -f "socat.*TCP-LISTEN:8888" 2>/dev/null || true
+    # Stop nginx proxy
+    nginx -s stop 2>/dev/null || pkill nginx 2>/dev/null || true
     bashio::log.info "Tunnel stopped"
     exit 0
 }
@@ -202,7 +202,7 @@ build_chisel_args() {
     # nginx on Cloud Run listens on :8080, proxies HTTP to :9001
     # chisel listens on :9000 for WebSocket control
     # Format: R:remote_port:local_host:local_port
-    # Reverse tunnel: server listens on 9001, forwards to local socat proxy (8888)
+    # Reverse tunnel: server listens on 9001, forwards to local nginx proxy (8888)
     CHISEL_ARGS+=("R:9001:127.0.0.1:8888")
 }
 
@@ -235,27 +235,33 @@ reset_backoff() {
     consecutive_failures=0
 }
 
-# Start socat proxy
-# Listens on port 8888, forwards to HA Core via Supervisor internal proxy
-start_socat_proxy() {
-    bashio::log.info "Starting socat proxy (8888 -> supervisor:80 -> HA Core)..."
+# Start nginx proxy
+# Listens on port 8888, forwards to HA Core via HTTPS
+start_nginx_proxy() {
+    bashio::log.info "Starting nginx proxy (8888 -> homeassistant:8123 HTTPS)..."
 
-    # Kill any existing socat
-    pkill -f "socat.*TCP-LISTEN:8888" 2>/dev/null || true
+    # Create required temp directories
+    mkdir -p /tmp/nginx-client-body /tmp/nginx-proxy /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi
 
-    # Start socat in background
-    # TCP-LISTEN: accept plain HTTP on 8888
-    # OPENSSL: connect to HA with SSL
-    # openssl-commonname= to set SNI header correctly
-    socat TCP-LISTEN:8888,fork,reuseaddr OPENSSL:homeassistant:8123,verify=0,openssl-commonname=homeassistant &
-    socat_pid=$!
-
-    bashio::log.info "socat started with PID: $socat_pid"
+    # Stop any existing nginx
+    nginx -s stop 2>/dev/null || pkill nginx 2>/dev/null || true
     sleep 1
 
+    # Start nginx
+    nginx
+    local exit_code=$?
+
+    if [ "$exit_code" -ne 0 ]; then
+        bashio::log.error "nginx failed to start (exit code: $exit_code)"
+        return 1
+    fi
+
+    bashio::log.info "nginx started successfully"
+
     # Verify it's running
-    if ! kill -0 "$socat_pid" 2>/dev/null; then
-        bashio::log.error "socat failed to start"
+    sleep 1
+    if ! pgrep -x nginx >/dev/null; then
+        bashio::log.error "nginx not running after start"
         return 1
     fi
 }
@@ -269,7 +275,7 @@ run_tunnel() {
     bashio::log.info "User: $AUTH_USER"
     bashio::log.info "Local port: $LOCAL_PORT"
     bashio::log.info "Keepalive: $KEEPALIVE"
-    bashio::log.info "Tunnel: R:9001:127.0.0.1:8888 -> homeassistant:8123 (HTTPS via socat)"
+    bashio::log.info "Tunnel: R:9001:127.0.0.1:8888 -> homeassistant:8123 (HTTPS via nginx)"
 
     # Start chisel in background
     /usr/local/bin/chisel "${CHISEL_ARGS[@]}" &
@@ -308,9 +314,9 @@ main() {
     # Setup Google Assistant package if configured
     setup_google_assistant
 
-    # Start socat SSL proxy (converts HTTP to HTTPS for HA Core)
-    if ! start_socat_proxy; then
-        bashio::log.fatal "Failed to start socat SSL proxy"
+    # Start nginx proxy (converts HTTP to HTTPS for HA Core)
+    if ! start_nginx_proxy; then
+        bashio::log.fatal "Failed to start nginx proxy"
         exit 1
     fi
 

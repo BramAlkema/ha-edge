@@ -18,9 +18,9 @@
 
 ## Phase 2: Technical Improvements
 
-- [ ] **2.1 Remove socat dependency**
-  - Option A: Configure HA to accept HTTP internally
-  - Option B: nginx SSL termination to HA
+- [x] **2.1 Remove socat dependency**
+  - ~~Option A: Configure HA to accept HTTP internally~~
+  - Option B: nginx SSL termination to HA ✓
   - Simplify add-on architecture
 
 - [ ] **2.2 Health endpoint in add-on**
