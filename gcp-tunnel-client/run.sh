@@ -47,6 +47,11 @@ validate_url() {
     fi
 }
 
+# Mark that we need a restart after first config
+mark_restart_needed() {
+    touch "/config/.gcp_tunnel_needs_restart"
+}
+
 # Ensure packages are enabled in configuration.yaml
 enable_packages() {
     local config_file="/config/configuration.yaml"
@@ -68,7 +73,8 @@ enable_packages() {
         sed -i '1i\homeassistant:\n  packages: !include_dir_named packages\n' "$config_file"
     fi
 
-    bashio::log.info "Packages enabled - HA Core restart required for changes to take effect"
+    bashio::log.info "Packages enabled - HA Core will restart automatically"
+    mark_restart_needed
 }
 
 # Setup Google Assistant package configuration
@@ -125,6 +131,15 @@ EOF
     fi
 
     bashio::log.info "Google Assistant: Package written to $package_file"
+
+    # Check if this is first-time setup (packages just enabled)
+    if [ -f "/config/.gcp_tunnel_needs_restart" ]; then
+        rm -f "/config/.gcp_tunnel_needs_restart"
+        bashio::log.info "Google Assistant: Configuration complete, restarting HA Core..."
+        # Use Supervisor API to restart HA Core
+        curl -s -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://supervisor/core/restart" || true
+    fi
 }
 
 # Read and validate configuration
