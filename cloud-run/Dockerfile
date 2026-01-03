@@ -8,7 +8,8 @@ FROM alpine:3.18
 RUN apk add --no-cache nginx supervisor curl python3 py3-pip \
     && pip3 install --no-cache-dir --break-system-packages \
         flask \
-        requests
+        requests \
+        gunicorn
 
 # Download chisel
 ARG CHISEL_VERSION=1.9.1
