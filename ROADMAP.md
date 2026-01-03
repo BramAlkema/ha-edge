@@ -45,7 +45,7 @@ Unlike DuckDNS (direct connection), we have an intelligent intermediary.
 
 ---
 
-## Current Features (v2.1)
+## Current Features (v2.2)
 
 ### Core
 - [x] Chisel WebSocket tunnel (no port forwarding)
@@ -60,6 +60,13 @@ Unlike DuckDNS (direct connection), we have an intelligent intermediary.
 - [x] 22 entity domains
 - [x] Local Home SDK hosting (/local-sdk/app.js)
 - [x] Report state (via HA's built-in service account)
+
+### Amazon Alexa
+- [x] Smart Home Skill endpoint with caching
+- [x] Discovery response caching (5 min TTL)
+- [x] State caching for offline fallback
+- [x] AWS Lambda proxy (CloudShell script)
+- [x] Guided setup in add-on UI
 
 ### Remote UI
 - [x] Full HA dashboard access
@@ -94,9 +101,10 @@ Unlike DuckDNS (direct connection), we have an intelligent intermediary.
 - [ ] Unit tests for edge_proxy
 
 ### Phase B: More Voice Assistants
-- [ ] **Alexa Smart Home Skill**
+- [x] **Alexa Smart Home Skill**
   - Same caching pattern as Google
-  - Lambda-less (direct to Cloud Run)
+  - AWS Lambda proxy (required by Amazon)
+  - Guided CloudShell setup script in UI
 - [ ] **Siri Shortcuts webhook**
   - Simple POST → HA service call
 

@@ -555,6 +555,164 @@ google_assistant:
     package_file.write_text(content)
 
 
+@app.route("/api/alexa-script")
+def alexa_script():
+    """Generate AWS CloudShell script for Alexa Lambda deployment."""
+    state = get_setup_state()
+    server_url = state.get("server_url", "https://YOUR-TUNNEL-URL.run.app")
+
+    # CloudShell script that creates Lambda proxy
+    script = f'''#!/bin/bash
+# Alexa Smart Home Lambda Proxy for Home Assistant
+# Run this in AWS CloudShell: https://console.aws.amazon.com/cloudshell
+
+set -e
+
+TUNNEL_URL="{server_url}"
+FUNCTION_NAME="ha-alexa-proxy"
+ROLE_NAME="ha-alexa-lambda-role"
+REGION="${{AWS_REGION:-us-east-1}}"
+
+echo "=== Creating Alexa Lambda Proxy ==="
+echo "Tunnel URL: $TUNNEL_URL"
+echo "Region: $REGION"
+echo ""
+
+# Step 1: Create IAM role
+echo "Creating IAM role..."
+TRUST_POLICY='{{
+  "Version": "2012-10-17",
+  "Statement": [{{
+    "Effect": "Allow",
+    "Principal": {{"Service": "lambda.amazonaws.com"}},
+    "Action": "sts:AssumeRole"
+  }}]
+}}'
+
+aws iam create-role \\
+  --role-name $ROLE_NAME \\
+  --assume-role-policy-document "$TRUST_POLICY" \\
+  2>/dev/null || echo "Role exists, continuing..."
+
+# Attach basic execution policy
+aws iam attach-role-policy \\
+  --role-name $ROLE_NAME \\
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole \\
+  2>/dev/null || true
+
+# Wait for role to propagate
+echo "Waiting for role to propagate..."
+sleep 10
+
+# Step 2: Create Lambda function code
+echo "Creating Lambda function..."
+
+LAMBDA_CODE='
+import json
+import urllib.request
+import urllib.error
+import os
+
+TUNNEL_URL = os.environ.get("TUNNEL_URL", "")
+
+def lambda_handler(event, context):
+    """Forward Alexa directive to Home Assistant via tunnel."""
+    try:
+        url = f"{{TUNNEL_URL}}/api/alexa"
+        data = json.dumps(event).encode("utf-8")
+
+        headers = {{
+            "Content-Type": "application/json",
+        }}
+
+        # Forward authorization if present
+        if "directive" in event:
+            endpoint = event["directive"].get("endpoint", {{}})
+            scope = endpoint.get("scope", {{}})
+            token = scope.get("token")
+            if token:
+                headers["Authorization"] = f"Bearer {{token}}"
+
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    except urllib.error.HTTPError as e:
+        print(f"HTTP Error: {{e.code}} {{e.reason}}")
+        return {{"error": str(e)}}
+    except Exception as e:
+        print(f"Error: {{e}}")
+        return {{"error": str(e)}}
+'
+
+# Write code to temp file
+echo "$LAMBDA_CODE" > /tmp/lambda_function.py
+
+# Create zip
+cd /tmp
+zip -j lambda.zip lambda_function.py
+
+# Get account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+ROLE_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME"
+
+# Create or update function
+aws lambda create-function \\
+  --function-name $FUNCTION_NAME \\
+  --runtime python3.11 \\
+  --role $ROLE_ARN \\
+  --handler lambda_function.lambda_handler \\
+  --zip-file fileb:///tmp/lambda.zip \\
+  --timeout 30 \\
+  --memory-size 128 \\
+  --environment "Variables={{TUNNEL_URL=$TUNNEL_URL}}" \\
+  --region $REGION \\
+  2>/dev/null || \\
+aws lambda update-function-code \\
+  --function-name $FUNCTION_NAME \\
+  --zip-file fileb:///tmp/lambda.zip \\
+  --region $REGION
+
+# Update environment in case URL changed
+aws lambda update-function-configuration \\
+  --function-name $FUNCTION_NAME \\
+  --environment "Variables={{TUNNEL_URL=$TUNNEL_URL}}" \\
+  --region $REGION \\
+  2>/dev/null || true
+
+# Step 3: Add Alexa trigger permission
+echo "Adding Alexa trigger permission..."
+aws lambda add-permission \\
+  --function-name $FUNCTION_NAME \\
+  --statement-id alexa-smart-home \\
+  --action lambda:InvokeFunction \\
+  --principal alexa-connectedhome.amazon.com \\
+  --region $REGION \\
+  2>/dev/null || echo "Permission exists, continuing..."
+
+# Get Lambda ARN
+LAMBDA_ARN="arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME"
+
+echo ""
+echo "=========================================="
+echo "SUCCESS! Lambda deployed."
+echo "=========================================="
+echo ""
+echo "Lambda ARN (copy this):"
+echo "$LAMBDA_ARN"
+echo ""
+echo "Next steps:"
+echo "1. Go to Alexa Developer Console"
+echo "2. Create Smart Home Skill"
+echo "3. Paste the Lambda ARN above"
+echo "4. Configure Account Linking"
+echo "=========================================="
+'''
+
+    return jsonify({"script": script})
+
+
 @app.route("/health")
 def health():
     """Health endpoint for monitoring and HA sensors."""

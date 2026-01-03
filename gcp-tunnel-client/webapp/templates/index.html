@@ -335,6 +335,89 @@ entities:<br>
                     </div>
                 </div>
             </div>
+
+            <!-- Step 6: Alexa (Optional) -->
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <div class="step-title">Connect Amazon Alexa (Optional)</div>
+                    <div class="step-desc">Add Alexa voice control via AWS Lambda</div>
+
+                    <div id="alexa-collapsed" style="margin-top: 12px;">
+                        <button class="btn btn-secondary" onclick="toggleAlexa()">
+                            🔊 Setup Alexa →
+                        </button>
+                    </div>
+
+                    <div id="alexa-expanded" class="hidden">
+                        <div style="margin-top: 12px; padding: 12px; background: rgba(255, 153, 0, 0.1); border-radius: 8px; font-size: 13px;">
+                            <strong>Note:</strong> Alexa requires AWS Lambda (free tier). This creates a simple proxy that forwards requests to your tunnel.
+                        </div>
+
+                        <div class="instructions" style="margin-top: 16px;">
+                            <p><strong>Step A: Deploy Lambda (AWS CloudShell)</strong></p>
+                            <ol>
+                                <li>Open <a href="https://console.aws.amazon.com/cloudshell" target="_blank">AWS CloudShell</a></li>
+                                <li>Copy and paste this script:</li>
+                            </ol>
+                        </div>
+
+                        <div class="config-box" id="cloudshell-script" style="white-space: pre; font-size: 12px; max-height: 300px; overflow-y: auto;">
+# Loading script...
+                        </div>
+
+                        <div style="margin-top: 8px;">
+                            <button class="btn btn-secondary" onclick="copyCloudShellScript()" style="padding: 8px 16px; font-size: 14px;">
+                                📋 Copy Script
+                            </button>
+                            <span id="copy-status" style="margin-left: 8px; color: var(--success); font-size: 13px;"></span>
+                        </div>
+
+                        <div class="instructions" style="margin-top: 16px;">
+                            <ol start="3">
+                                <li>Run the script - it will output a <strong>Lambda ARN</strong></li>
+                                <li>Copy the ARN for the next step</li>
+                            </ol>
+                        </div>
+
+                        <div class="instructions" style="margin-top: 16px;">
+                            <p><strong>Step B: Create Alexa Skill</strong></p>
+                            <ol>
+                                <li>Go to <a href="https://developer.amazon.com/alexa/console/ask" target="_blank">Alexa Developer Console</a></li>
+                                <li>Create Skill → Smart Home → Provision your own</li>
+                                <li>In Smart Home settings, paste your Lambda ARN</li>
+                                <li>Under Account Linking:</li>
+                            </ol>
+                        </div>
+
+                        <div class="config-box">
+<span class="label">Authorization URI:</span><br>
+{{ state.server_url }}/auth/authorize<br><br>
+<span class="label">Access Token URI:</span><br>
+{{ state.server_url }}/auth/token<br><br>
+<span class="label">Client ID:</span><br>
+https://pitangui.amazon.com/<br><br>
+<span class="label">Client Secret:</span><br>
+(any value, e.g. "secret")
+                        </div>
+
+                        <div class="instructions" style="margin-top: 16px;">
+                            <ol start="5">
+                                <li>Add redirect URLs from Alexa to your skill</li>
+                                <li>Save and enable the skill in Alexa app</li>
+                                <li>Link your Home Assistant account</li>
+                                <li>Say "Alexa, discover devices"</li>
+                            </ol>
+                        </div>
+
+                        <div style="margin-top: 16px;">
+                            <a href="https://developer.amazon.com/alexa/console/ask" target="_blank" class="btn btn-secondary">
+                                Open Alexa Console →
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>
@@ -434,6 +517,43 @@ entities:<br>
                 btn.disabled = false;
                 btn.innerHTML = '🚀 Retry Deploy';
             }
+        }
+
+        // Alexa setup
+        let alexaScriptLoaded = false;
+
+        function toggleAlexa() {
+            const collapsed = document.getElementById('alexa-collapsed');
+            const expanded = document.getElementById('alexa-expanded');
+
+            collapsed.classList.add('hidden');
+            expanded.classList.remove('hidden');
+
+            if (!alexaScriptLoaded) {
+                loadCloudShellScript();
+            }
+        }
+
+        async function loadCloudShellScript() {
+            try {
+                const resp = await fetch(ingressPath + '/api/alexa-script');
+                const data = await resp.json();
+                if (data.script) {
+                    document.getElementById('cloudshell-script').textContent = data.script;
+                    alexaScriptLoaded = true;
+                }
+            } catch (e) {
+                document.getElementById('cloudshell-script').textContent = '# Error loading script: ' + e.message;
+            }
+        }
+
+        function copyCloudShellScript() {
+            const script = document.getElementById('cloudshell-script').textContent;
+            navigator.clipboard.writeText(script).then(() => {
+                const status = document.getElementById('copy-status');
+                status.textContent = 'Copied!';
+                setTimeout(() => { status.textContent = ''; }, 2000);
+            });
         }
     </script>
 </body>

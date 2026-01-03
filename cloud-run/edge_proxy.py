@@ -612,23 +612,174 @@ def health():
     return jsonify({
         "status": "healthy",
         "service": "edge-proxy",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "features": {
             "bouncer": ["rate_limit", "auth", "remote_ui_toggle"],
-            "butler": ["sync_cache", "query_cache", "offline_fallback", "webhooks", "logging"]
+            "butler": ["sync_cache", "query_cache", "offline_fallback", "webhooks", "logging"],
+            "voice_assistants": ["google_assistant", "alexa"]
         }
     })
 
 
 # =============================================================================
-# Future Endpoints (TODOs)
+# Alexa Smart Home Endpoint
 # =============================================================================
 
-# TODO: Alexa Smart Home endpoint
-# @app.route("/api/alexa", methods=["POST"])
-# def alexa_smart_home():
-#     """Handle Alexa Smart Home Skill requests."""
-#     pass
+# Alexa caches (similar to Google)
+alexa_discovery_cache: dict[str, dict] = {}  # {user_id: {response, expires_at}}
+alexa_state_cache: dict[str, dict] = {}      # {endpoint_id: {state, updated_at}}
+
+ALEXA_DISCOVERY_TTL = int(os.environ.get("ALEXA_DISCOVERY_TTL", 300))  # 5 minutes
+
+
+@app.route("/api/alexa", methods=["POST"])
+@rate_limit
+def alexa_smart_home():
+    """Alexa Smart Home Skill endpoint.
+
+    Handles directives from Alexa via Lambda proxy:
+    - Alexa.Discovery: Return list of devices (cached)
+    - Alexa.ReportState: Return device state (cached for offline fallback)
+    - Alexa.*Controller: Execute commands (never cached)
+
+    The Lambda proxy forwards requests from Alexa to this endpoint.
+    We process them and forward to Home Assistant's alexa/smart_home endpoint.
+    """
+    start_time = time.time()
+
+    # Parse request
+    data = request.get_json() or {}
+
+    # Basic validation
+    if not validate_json_safe(data):
+        return jsonify({"error": "invalid_request"}), 400
+
+    # Extract directive info
+    directive = data.get("directive", {})
+    header = directive.get("header", {})
+    namespace = header.get("namespace", "unknown")
+    name = header.get("name", "unknown")
+
+    # For logging
+    directive_type = f"{namespace}.{name}"
+
+    # -------------------------------------------------------------------------
+    # Alexa.Discovery: Return device list (cached)
+    # -------------------------------------------------------------------------
+    if namespace == "Alexa.Discovery" and name == "Discover":
+        # Use bearer token as user key
+        auth_header = request.headers.get("Authorization", "")
+        user_id = hashlib.sha256(auth_header.encode()).hexdigest()[:16]
+
+        # Check cache first
+        with cache_lock:
+            cached = alexa_discovery_cache.get(user_id)
+            if cached and cached["expires_at"] > time.time():
+                logger.info(f"Alexa Discovery cache hit: user={user_id[:8]}...")
+                duration_ms = int((time.time() - start_time) * 1000)
+                log_request(directive_type, data, cached["response"], duration_ms, cached=True)
+                return jsonify(cached["response"])
+
+        # Forward to HA
+        response, status, is_error = proxy_to_upstream(
+            "/api/alexa/smart_home", data, request.headers
+        )
+
+        if not is_error and response:
+            # Cache the response
+            with cache_lock:
+                alexa_discovery_cache[user_id] = {
+                    "response": response,
+                    "expires_at": time.time() + ALEXA_DISCOVERY_TTL
+                }
+            endpoints = response.get("event", {}).get("payload", {}).get("endpoints", [])
+            logger.info(f"Alexa Discovery: cached {len(endpoints)} endpoints")
+            call_webhook("alexa_discovery", {"endpoint_count": len(endpoints)})
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_request(directive_type, data, response, duration_ms)
+
+        if is_error or not response:
+            return jsonify({"error": "upstream_error"}), status
+        return jsonify(response)
+
+    # -------------------------------------------------------------------------
+    # Alexa.ReportState: Return device state (cached for offline fallback)
+    # -------------------------------------------------------------------------
+    elif namespace == "Alexa" and name == "ReportState":
+        endpoint = directive.get("endpoint", {})
+        endpoint_id = endpoint.get("endpointId", "unknown")
+
+        # Try upstream first
+        response, status, is_error = proxy_to_upstream(
+            "/api/alexa/smart_home", data, request.headers
+        )
+
+        if not is_error and response:
+            # Cache state for offline fallback
+            context = response.get("context", {})
+            properties = context.get("properties", [])
+            if properties:
+                with cache_lock:
+                    alexa_state_cache[endpoint_id] = {
+                        "properties": properties,
+                        "updated_at": time.time()
+                    }
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_request(directive_type, data, response, duration_ms)
+            return jsonify(response)
+
+        # Offline fallback - return cached state
+        with cache_lock:
+            cached = alexa_state_cache.get(endpoint_id)
+            if cached:
+                logger.warning(f"Alexa offline fallback: endpoint={endpoint_id}")
+                fallback_response = {
+                    "event": {
+                        "header": {
+                            "namespace": "Alexa",
+                            "name": "StateReport",
+                            "messageId": header.get("messageId", ""),
+                            "correlationToken": header.get("correlationToken", ""),
+                            "payloadVersion": "3"
+                        },
+                        "endpoint": endpoint,
+                        "payload": {}
+                    },
+                    "context": {
+                        "properties": cached["properties"]
+                    }
+                }
+                duration_ms = int((time.time() - start_time) * 1000)
+                log_request(directive_type, data, fallback_response, duration_ms, offline=True)
+                call_webhook("alexa_offline_fallback", {"endpoint_id": endpoint_id})
+                return jsonify(fallback_response)
+
+        return jsonify({"error": "upstream_unavailable"}), status
+
+    # -------------------------------------------------------------------------
+    # All other directives (controllers): Forward to HA (never cached)
+    # -------------------------------------------------------------------------
+    else:
+        response, status, is_error = proxy_to_upstream(
+            "/api/alexa/smart_home", data, request.headers
+        )
+
+        if response and namespace.endswith("Controller"):
+            call_webhook("alexa_execute", {"directive": directive_type})
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_request(directive_type, data, response, duration_ms)
+
+        if is_error:
+            return jsonify({"error": "upstream_error"}), status
+        return jsonify(response)
+
+
+# =============================================================================
+# Future Endpoints (TODOs)
+# =============================================================================
 
 # TODO: Notification hub
 # @app.route("/api/notify", methods=["POST"])
