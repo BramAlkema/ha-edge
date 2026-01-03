@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GCP Tunnel Setup</title>
+    <title>Home Assistant Edge</title>
     <style>
         :root {
             --primary: #03a9f4;
@@ -154,9 +154,9 @@
                 <div>
                     <h1>
                         <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
-                        GCP Tunnel Setup
+                        Home Assistant Edge
                     </h1>
-                    <p class="subtitle">Connect Home Assistant to Google Cloud</p>
+                    <p class="subtitle">Stateless edge companion for voice control & remote access</p>
                 </div>
                 {% if state.step == 'complete' %}
                 <a href="{{ ingress_path }}/entities" class="btn btn-secondary" style="margin-top: 4px;">
@@ -314,20 +314,20 @@ _home-assistant._tcp.local<br><br>
                     <div class="instructions">
                         <p>Sensors are automatically created:</p>
                         <ul style="list-style: disc; padding-left: 20px; margin: 8px 0;">
-                            <li><code>sensor.gcp_tunnel_status</code> - healthy/disconnected</li>
-                            <li><code>binary_sensor.gcp_tunnel_connected</code> - on/off</li>
+                            <li><code>sensor.ha_edge_status</code> - healthy/disconnected</li>
+                            <li><code>binary_sensor.ha_edge_connected</code> - on/off</li>
                         </ul>
                         <p style="margin-top: 12px;">Add this card to your dashboard:</p>
                     </div>
                     <div class="config-box">
 type: entities<br>
-title: GCP Tunnel<br>
+title: HA Edge<br>
 entities:<br>
-&nbsp;&nbsp;- entity: sensor.gcp_tunnel_status<br>
+&nbsp;&nbsp;- entity: sensor.ha_edge_status<br>
 &nbsp;&nbsp;&nbsp;&nbsp;name: Status<br>
-&nbsp;&nbsp;- entity: binary_sensor.gcp_tunnel_connected<br>
+&nbsp;&nbsp;- entity: binary_sensor.ha_edge_connected<br>
 &nbsp;&nbsp;&nbsp;&nbsp;name: Connected<br>
-&nbsp;&nbsp;- entity: binary_sensor.gcp_tunnel_report_state<br>
+&nbsp;&nbsp;- entity: binary_sensor.ha_edge_report_state<br>
 &nbsp;&nbsp;&nbsp;&nbsp;name: Report State
                     </div>
                     <div style="margin-top: 12px; color: var(--text-muted); font-size: 13px;">

@@ -1,6 +1,6 @@
-# Chisel server with nginx front-end and edge proxy for Cloud Run
+# Home Assistant Edge - Cloud Run Server
+# Stateless edge companion: voice control, remote access, smart caching
 # nginx on 8080 splits: WebSocket → chisel, HTTP → edge proxy → tunnel
-# Edge proxy adds: caching, offline fallback, rate limiting, logging
 
 FROM alpine:3.18
 

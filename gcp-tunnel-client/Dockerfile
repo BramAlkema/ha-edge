@@ -1,5 +1,5 @@
-# GCP Tunnel Client Add-on for Home Assistant
-# One-click Google Cloud setup with tunnel client
+# Home Assistant Edge - Add-on Client
+# Stateless edge companion: voice control, remote access, smart caching
 
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
@@ -57,8 +57,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Labels for HA
 LABEL \
-    io.hass.name="GCP Tunnel Client" \
-    io.hass.description="Chisel tunnel client for Google Cloud Run" \
+    io.hass.name="Home Assistant Edge" \
+    io.hass.description="Stateless edge companion for voice control and remote access" \
     io.hass.type="addon" \
     io.hass.version="${CHISEL_VERSION}"
 

@@ -1,4 +1,6 @@
-# GCP Tunnel Roadmap
+# Home Assistant Edge
+
+*Stateless edge companion for Home Assistant. Voice control, remote access, smart caching — all on Google Cloud free tier.*
 
 ## Vision: The Edge Layer for Home Automation
 

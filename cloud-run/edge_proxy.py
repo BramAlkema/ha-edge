@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-GCP Tunnel Edge Proxy - The "Bouncer" and "Butler" for Home Assistant
+Home Assistant Edge - Stateless Edge Companion
+
+The "Bouncer" and "Butler" for Home Assistant.
 
 This edge proxy sits between the internet and Home Assistant, providing:
 
@@ -611,7 +613,7 @@ def health():
     """
     return jsonify({
         "status": "healthy",
-        "service": "edge-proxy",
+        "service": "ha-edge",
         "version": "2.2.0",
         "features": {
             "bouncer": ["rate_limit", "auth", "remote_ui_toggle"],
