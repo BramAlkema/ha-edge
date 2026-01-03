@@ -381,7 +381,7 @@ show_setup_instructions() {
     bashio::log.info "gcloud run deploy ha-tunnel \\"
     bashio::log.info "  --project=${project_id} \\"
     bashio::log.info "  --region=us-central1 \\"
-    bashio::log.info "  --image=ghcr.io/bramalkema/gcp-ha-tunnel/tunnel-server:latest \\"
+    bashio::log.info "  --image=ghcr.io/bramalkema/ha-edge/server:latest \\"
     bashio::log.info "  --allow-unauthenticated \\"
     bashio::log.info "  --set-env-vars=AUTH=hauser:${auth_pass} \\"
     bashio::log.info "  --timeout=3600 --min-instances=0 --max-instances=1"

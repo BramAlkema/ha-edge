@@ -25,7 +25,7 @@ SA_KEY_FILE = DATA_DIR / "service_account.json"
 SETUP_FILE = DATA_DIR / "setup_state.json"
 
 # Pre-built tunnel server image
-TUNNEL_IMAGE = "ghcr.io/bramalkema/gcp-ha-tunnel/tunnel-server:latest"
+TUNNEL_IMAGE = "ghcr.io/bramalkema/ha-edge/server:latest"
 
 # Required scopes
 SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
