@@ -3,6 +3,7 @@
 # GCP Tunnel Client - connects to Cloud Run chisel server
 #
 # Features:
+# - Setup mode: generates config, shows deployment instructions
 # - Exponential backoff on reconnect
 # - Graceful shutdown handling
 # - Connection monitoring
@@ -15,6 +16,7 @@ set -u
 MAX_BACKOFF=300  # 5 minutes max
 INITIAL_BACKOFF=5
 BACKOFF_MULTIPLIER=2
+GENERATED_PASS_FILE="/config/.gcp_tunnel_password"
 
 # State
 current_backoff=$INITIAL_BACKOFF
@@ -142,6 +144,71 @@ EOF
     fi
 }
 
+# Generate or load password
+get_or_generate_password() {
+    if [ -f "$GENERATED_PASS_FILE" ]; then
+        cat "$GENERATED_PASS_FILE"
+    else
+        local pass
+        pass=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
+        echo -n "$pass" > "$GENERATED_PASS_FILE"
+        chmod 600 "$GENERATED_PASS_FILE"
+        echo "$pass"
+    fi
+}
+
+# Show setup instructions when not configured
+show_setup_instructions() {
+    local auth_pass
+    auth_pass=$(get_or_generate_password)
+
+    local project_id
+    project_id=$(bashio::config 'google_project_id')
+    if bashio::var.is_empty "$project_id"; then
+        project_id="YOUR_PROJECT_ID"
+    fi
+
+    bashio::log.info "========================================"
+    bashio::log.info "        SETUP REQUIRED"
+    bashio::log.info "========================================"
+    bashio::log.info ""
+    bashio::log.info "Run this command in your terminal:"
+    bashio::log.info ""
+    bashio::log.info "─────────────────────────────────────────"
+    bashio::log.info "gcloud run deploy ha-tunnel \\"
+    bashio::log.info "  --project=${project_id} \\"
+    bashio::log.info "  --region=us-central1 \\"
+    bashio::log.info "  --image=ghcr.io/bramalkema/gcp-ha-tunnel/tunnel-server:latest \\"
+    bashio::log.info "  --allow-unauthenticated \\"
+    bashio::log.info "  --set-env-vars=AUTH=hauser:${auth_pass} \\"
+    bashio::log.info "  --timeout=3600 --min-instances=0 --max-instances=1"
+    bashio::log.info "─────────────────────────────────────────"
+    bashio::log.info ""
+    bashio::log.info "Then copy the URL it outputs and set:"
+    bashio::log.info "  server_url: <the URL>"
+    bashio::log.info "  auth_pass: ${auth_pass}"
+    bashio::log.info ""
+    bashio::log.info "Google Actions Console (for Google Assistant):"
+    bashio::log.info "  https://console.actions.google.com"
+    bashio::log.info ""
+    bashio::log.info "  Fulfillment URL: <URL>/api/google_assistant"
+    bashio::log.info "  Authorization URL: <URL>/auth/authorize"
+    bashio::log.info "  Token URL: <URL>/auth/token"
+    bashio::log.info "  Client ID: https://oauth-redirect.googleusercontent.com/r/${project_id}"
+    bashio::log.info ""
+    bashio::log.info "Waiting for configuration..."
+
+    # Wait and check periodically
+    while true; do
+        sleep 30
+        SERVER_URL=$(bashio::config 'server_url')
+        if ! bashio::var.is_empty "$SERVER_URL"; then
+            bashio::log.info "Configuration detected! Starting tunnel..."
+            return 0
+        fi
+    done
+}
+
 # Read and validate configuration
 read_config() {
     SERVER_URL=$(bashio::config 'server_url')
@@ -151,15 +218,23 @@ read_config() {
     KEEPALIVE=$(bashio::config 'keepalive')
     LOG_LEVEL=$(bashio::config 'log_level')
 
-    # Validate required config
+    # If no server_url, show setup instructions
     if bashio::var.is_empty "$SERVER_URL"; then
-        bashio::log.fatal "Configuration error: server_url is required"
-        exit 1
+        show_setup_instructions
+        # Re-read after setup
+        SERVER_URL=$(bashio::config 'server_url')
+        AUTH_PASS=$(bashio::config 'auth_pass')
     fi
 
+    # Use generated password if none configured
     if bashio::var.is_empty "$AUTH_PASS"; then
-        bashio::log.fatal "Configuration error: auth_pass is required"
-        exit 1
+        if [ -f "$GENERATED_PASS_FILE" ]; then
+            AUTH_PASS=$(cat "$GENERATED_PASS_FILE")
+            bashio::log.info "Using generated password from setup"
+        else
+            bashio::log.fatal "Configuration error: auth_pass is required"
+            exit 1
+        fi
     fi
 
     # Validate URL
