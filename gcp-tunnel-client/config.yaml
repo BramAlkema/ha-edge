@@ -8,7 +8,6 @@ description: >-
   Secure tunnel to Google Cloud Run for external Home Assistant access.
   No port forwarding required. Supports Google Assistant integration.
 url: https://github.com/BramAlkema/gcp-ha-tunnel
-image: ghcr.io/bramalkema/gcp-tunnel-client-{arch}
 arch:
   - aarch64
   - amd64
