@@ -150,11 +150,20 @@
 <body>
     <div class="container">
         <div class="card">
-            <h1>
-                <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
-                GCP Tunnel Setup
-            </h1>
-            <p class="subtitle">Connect Home Assistant to Google Cloud</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1>
+                        <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+                        GCP Tunnel Setup
+                    </h1>
+                    <p class="subtitle">Connect Home Assistant to Google Cloud</p>
+                </div>
+                {% if state.step == 'complete' %}
+                <a href="{{ ingress_path }}/entities" class="btn btn-secondary" style="margin-top: 4px;">
+                    Configure Entities
+                </a>
+                {% endif %}
+            </div>
 
             <!-- Step 1: Create Service Account -->
             <div class="step">
@@ -223,9 +232,9 @@
                     {% if state.step == 'complete' %}
                     <div class="instructions">
                         <ol>
-                            <li>Go to <a href="https://console.actions.google.com" target="_blank">Google Actions Console</a></li>
+                            <li>Go to <a href="https://console.home.google.com" target="_blank">Google Home Developer Console</a></li>
                             <li>Create project → Select <code>{{ state.project_id }}</code></li>
-                            <li>Choose Smart Home → Start Building</li>
+                            <li>Choose Cloud-to-cloud → Create integration</li>
                             <li>Enter these values:</li>
                         </ol>
                     </div>
@@ -240,13 +249,93 @@
                         https://oauth-redirect.googleusercontent.com/r/{{ state.project_id }}
                     </div>
                     <div style="margin-top: 16px">
-                        <a href="https://console.actions.google.com" target="_blank" class="btn btn-secondary">
-                            Open Actions Console →
+                        <a href="https://console.home.google.com" target="_blank" class="btn btn-secondary">
+                            Open Developer Console →
                         </a>
                     </div>
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Step 4: Local Fulfillment (shown after complete) -->
+            {% if state.step == 'complete' %}
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <div class="step-title">Enable Local Fulfillment (Recommended)</div>
+                    <div class="step-desc">Faster responses - Google devices talk directly to HA on your LAN</div>
+
+                    <div class="instructions">
+                        <ol>
+                            <li>In <a href="https://console.home.google.com" target="_blank">Developer Console</a>, go to your project</li>
+                            <li>Go to your Cloud-to-cloud integration</li>
+                            <li>Enable <strong>Local Home SDK</strong></li>
+                            <li>For <strong>Node.js</strong> and <strong>Chrome</strong>, enter this URL:</li>
+                        </ol>
+                    </div>
+                    <div class="config-box">
+<span class="label">JavaScript URL (for both Node and Chrome):</span><br>
+{{ state.server_url }}/local-sdk/app.js
+                    </div>
+                    <div class="instructions" style="margin-top: 12px;">
+                        <ol start="5">
+                            <li>Under <strong>Device scan configuration</strong>, click <strong>Add</strong></li>
+                            <li>Select <strong>MDNS</strong> and enter:</li>
+                        </ol>
+                    </div>
+                    <div class="config-box">
+<span class="label">mDNS service name:</span><br>
+_home-assistant._tcp.local<br><br>
+<span class="label">Name:</span><br>
+*\._home-assistant\._tcp\.local
+                    </div>
+                    <div class="instructions" style="margin-top: 12px;">
+                        <ol start="7">
+                            <li>Check <strong>Support local query</strong></li>
+                            <li>Click <strong>Save</strong></li>
+                            <li>Wait 30 minutes or restart your Google devices</li>
+                            <li>Say "OK Google, sync my devices"</li>
+                        </ol>
+                    </div>
+                    <div style="margin-top: 12px; padding: 12px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; font-size: 13px;">
+                        <strong>Why?</strong> Local fulfillment sends commands directly over your LAN via mDNS,
+                        skipping the cloud round-trip. Much faster response times!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Dashboard Card -->
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <div class="step-title">Add Dashboard Card (Optional)</div>
+                    <div class="step-desc">Monitor tunnel status from your dashboard</div>
+
+                    <div class="instructions">
+                        <p>Sensors are automatically created:</p>
+                        <ul style="list-style: disc; padding-left: 20px; margin: 8px 0;">
+                            <li><code>sensor.gcp_tunnel_status</code> - healthy/disconnected</li>
+                            <li><code>binary_sensor.gcp_tunnel_connected</code> - on/off</li>
+                        </ul>
+                        <p style="margin-top: 12px;">Add this card to your dashboard:</p>
+                    </div>
+                    <div class="config-box">
+type: entities<br>
+title: GCP Tunnel<br>
+entities:<br>
+&nbsp;&nbsp;- entity: sensor.gcp_tunnel_status<br>
+&nbsp;&nbsp;&nbsp;&nbsp;name: Status<br>
+&nbsp;&nbsp;- entity: binary_sensor.gcp_tunnel_connected<br>
+&nbsp;&nbsp;&nbsp;&nbsp;name: Connected<br>
+&nbsp;&nbsp;- entity: binary_sensor.gcp_tunnel_report_state<br>
+&nbsp;&nbsp;&nbsp;&nbsp;name: Report State
+                    </div>
+                    <div style="margin-top: 12px; color: var(--text-muted); font-size: 13px;">
+                        Tip: Restart HA Core once to load the new sensors.
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 

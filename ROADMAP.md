@@ -27,14 +27,15 @@
   - `/health` endpoint for monitoring ✓
   - Returns tunnel_connected, proxy_running, setup status
 
-- [ ] **2.3 Better error messages**
-  - Detect common failures (wrong URL, bad auth, HA down)
-  - Clear actionable error messages in logs
+- [x] **2.3 Better error messages**
+  - Detect common failures (wrong URL, bad auth, HA down) ✓
+  - Clear actionable error messages in logs ✓
+  - analyze_error() function with boxed error output
 
-- [ ] **2.4 Logging improvements**
-  - Structured logging
-  - Log rotation
-  - Debug mode toggle
+- [x] **2.4 Logging improvements**
+  - Structured JSON logging (debug mode) ✓
+  - Log rotation (1MB max) ✓
+  - Debug mode toggle via log_level config ✓
 
 ## Phase 3: Features
 
@@ -43,12 +44,22 @@
   - Leverages HA's JWT generation, token refresh, batching ✓
   - Just configure, don't reinvent
 
-- [ ] **3.2 Entity filtering UI**
-  - Add-on web UI to select entities
-  - Or use HA's native expose UI
-  - Per-entity room assignment
+- [x] **3.2 Entity filtering UI**
+  - Add-on web UI to configure entities ✓
+  - Per-entity aliases, custom names ✓
+  - Per-entity room assignment ✓
+  - Expose/hide toggle per entity ✓
 
-- [ ] **3.3 Auto-update add-on**
+- [x] **3.3 Local fulfillment support**
+  - Documentation for enabling local fulfillment ✓
+  - mDNS scan configuration instructions ✓
+  - Faster response times via LAN ✓
+
+- [x] **3.4 Expanded entity domains**
+  - Support for all 22+ HA domains ✓
+  - Cameras, alarm panels, lawn mowers, etc. ✓
+
+- [ ] **3.5 Auto-update add-on**
   - Check GitHub releases
   - Notify user of updates
   - One-click update (or auto)
@@ -65,10 +76,11 @@
   - Per-user device filtering
   - Household sharing
 
-- [ ] **4.3 HA Dashboard integration**
-  - Tunnel status card
-  - Connection history
-  - Google sync status
+- [x] **4.3 HA Dashboard integration**
+  - Auto-created sensors via packages ✓
+  - sensor.gcp_tunnel_status with attributes ✓
+  - binary_sensor.gcp_tunnel_connected ✓
+  - Sample Lovelace card in setup UI ✓
 
 ## Phase 5: Enterprise/Scale
 

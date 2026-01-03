@@ -124,6 +124,12 @@ def index():
                          ingress_path=get_ingress_path())
 
 
+@app.route("/entities")
+def entities_page():
+    """Entity configuration page."""
+    return render_template("entities.html", ingress_path=get_ingress_path())
+
+
 @app.route("/api/upload-key", methods=["POST"])
 def upload_key():
     """Upload service account key."""
@@ -374,6 +380,179 @@ def get_status():
         "server_url": state.get("server_url"),
         "has_password": state.get("password") is not None
     })
+
+
+ENTITY_CONFIG_FILE = DATA_DIR / "entity_config.json"
+
+
+def get_entity_config():
+    """Load entity configuration."""
+    if ENTITY_CONFIG_FILE.exists():
+        return json.loads(ENTITY_CONFIG_FILE.read_text())
+    return {}
+
+
+def save_entity_config(config):
+    """Save entity configuration."""
+    DATA_DIR.mkdir(exist_ok=True)
+    ENTITY_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+
+
+@app.route("/api/entities")
+def get_entities():
+    """Get list of HA entities that can be exposed to Google Assistant."""
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+    if not supervisor_token:
+        return jsonify({"error": "Not running in HA environment"}), 500
+
+    # Domains we expose to Google Assistant
+    exposed_domains = [
+        "light", "switch", "input_boolean", "climate", "fan", "humidifier",
+        "water_heater", "cover", "valve", "lock", "alarm_control_panel",
+        "media_player", "sensor", "binary_sensor", "scene", "script",
+        "input_select", "select", "button", "input_button", "vacuum",
+        "lawn_mower", "camera"
+    ]
+
+    try:
+        resp = requests.get(
+            "http://supervisor/core/api/states",
+            headers={"Authorization": f"Bearer {supervisor_token}"}
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": "Failed to fetch entities"}), 500
+
+        all_states = resp.json()
+        entity_config = get_entity_config()
+
+        entities = []
+        for state in all_states:
+            entity_id = state.get("entity_id", "")
+            domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+            if domain in exposed_domains:
+                config = entity_config.get(entity_id, {})
+                entities.append({
+                    "entity_id": entity_id,
+                    "friendly_name": state.get("attributes", {}).get("friendly_name", entity_id),
+                    "domain": domain,
+                    "state": state.get("state"),
+                    "expose": config.get("expose", True),
+                    "name": config.get("name"),
+                    "aliases": config.get("aliases", []),
+                    "room": config.get("room")
+                })
+
+        # Sort by domain then name
+        entities.sort(key=lambda e: (e["domain"], e["friendly_name"]))
+        return jsonify({"entities": entities})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/entities", methods=["POST"])
+def save_entities():
+    """Save entity configuration."""
+    try:
+        data = request.json
+        if not data or "entities" not in data:
+            return jsonify({"error": "No entities provided"}), 400
+
+        # Convert list to dict keyed by entity_id
+        config = {}
+        for entity in data["entities"]:
+            entity_id = entity.get("entity_id")
+            if entity_id:
+                config[entity_id] = {
+                    "expose": entity.get("expose", True),
+                    "name": entity.get("name"),
+                    "aliases": entity.get("aliases", []),
+                    "room": entity.get("room")
+                }
+
+        save_entity_config(config)
+
+        # Regenerate the google_assistant package with entity_config
+        regenerate_ga_package(config)
+
+        return jsonify({"success": True, "count": len(config)})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def regenerate_ga_package(entity_config):
+    """Regenerate google_assistant package with entity config."""
+    state = get_setup_state()
+    project_id = state.get("project_id")
+    if not project_id:
+        return
+
+    package_file = Path("/config/packages/gcp_tunnel_google_assistant.yaml")
+
+    # Build entity_config section
+    entity_config_yaml = ""
+    for entity_id, config in entity_config.items():
+        if not config.get("expose", True) or config.get("name") or config.get("aliases") or config.get("room"):
+            entity_config_yaml += f"    {entity_id}:\n"
+            if not config.get("expose", True):
+                entity_config_yaml += f"      expose: false\n"
+            if config.get("name"):
+                entity_config_yaml += f"      name: \"{config['name']}\"\n"
+            if config.get("aliases"):
+                entity_config_yaml += f"      aliases:\n"
+                for alias in config["aliases"]:
+                    entity_config_yaml += f"        - \"{alias}\"\n"
+            if config.get("room"):
+                entity_config_yaml += f"      room: \"{config['room']}\"\n"
+
+    # Write the package file
+    content = f"""# Auto-generated by GCP Tunnel Client add-on
+# Uses Home Assistant's built-in Google Assistant integration
+# https://www.home-assistant.io/integrations/google_assistant/
+
+google_assistant:
+  project_id: {project_id}
+  expose_by_default: true
+  exposed_domains:
+    - light
+    - switch
+    - input_boolean
+    - climate
+    - fan
+    - humidifier
+    - water_heater
+    - cover
+    - valve
+    - lock
+    - alarm_control_panel
+    - media_player
+    - sensor
+    - binary_sensor
+    - scene
+    - script
+    - input_select
+    - select
+    - button
+    - input_button
+    - vacuum
+    - lawn_mower
+    - camera
+    - event
+"""
+
+    # Add service account if exists
+    if SA_KEY_FILE.exists():
+        content += """  service_account: !include ../gcp_tunnel_service_account.json
+  report_state: true
+"""
+
+    # Add entity_config if any
+    if entity_config_yaml:
+        content += f"  entity_config:\n{entity_config_yaml}"
+
+    package_file.write_text(content)
 
 
 @app.route("/health")

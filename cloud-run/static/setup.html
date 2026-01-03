@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCP Tunnel Setup</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <style>
+        :root { --primary: #03a9f4; --success: #4caf50; --bg: #1c1c1c; --card: #2d2d2d; --text: #fff; --muted: #9e9e9e; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 16px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        h1 { font-size: 20px; }
+        h2 { font-size: 16px; color: var(--primary); margin-bottom: 12px; }
+        .url-row { display: flex; gap: 8px; margin-bottom: 8px; background: #1a1a1a; border-radius: 6px; padding: 10px; align-items: center; }
+        .url-label { font-size: 11px; color: var(--primary); min-width: 80px; }
+        .url-value { flex: 1; font-family: monospace; font-size: 11px; word-break: break-all; color: var(--muted); }
+        .copy-btn { background: var(--primary); color: #fff; border: none; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 11px; }
+        .copy-btn.copied { background: var(--success); }
+        .deep-link { display: block; background: var(--primary); color: #fff; text-align: center; padding: 14px; border-radius: 8px; font-weight: 600; text-decoration: none; margin-top: 12px; }
+        .qr-box { background: #fff; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 12px; }
+        .qr-box canvas { max-width: 150px; }
+        .qr-label { color: #333; font-size: 12px; margin-top: 6px; }
+        a { color: var(--primary); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <h1>GCP Tunnel Setup</h1>
+        <p style="color:var(--muted);font-size:13px;margin-top:4px">Project: <span id="pid"></span></p>
+    </div>
+
+    <div class="card">
+        <h2>1. Link Google Home</h2>
+        <div class="qr-box"><canvas id="qr-deep"></canvas><div class="qr-label">Scan to link</div></div>
+        <a id="deep-link" class="deep-link" href="#" target="_blank">Open Google Home →</a>
+    </div>
+
+    <div class="card">
+        <h2>2. Developer Console</h2>
+        <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Paste into <a href="https://console.home.google.com" target="_blank">console.home.google.com</a></p>
+        <div class="url-row"><span class="url-label">Fulfillment</span><span class="url-value" id="u1"></span><button class="copy-btn" data-target="u1">Copy</button></div>
+        <div class="url-row"><span class="url-label">Auth URL</span><span class="url-value" id="u2"></span><button class="copy-btn" data-target="u2">Copy</button></div>
+        <div class="url-row"><span class="url-label">Token URL</span><span class="url-value" id="u3"></span><button class="copy-btn" data-target="u3">Copy</button></div>
+        <div class="url-row"><span class="url-label">Client ID</span><span class="url-value" id="u4"></span><button class="copy-btn" data-target="u4">Copy</button></div>
+        <div class="url-row"><span class="url-label">Local SDK</span><span class="url-value" id="u5"></span><button class="copy-btn" data-target="u5">Copy</button></div>
+    </div>
+</div>
+<script>
+const base = location.origin;
+const pid = (location.hostname.match(/ha-tunnel-(\d+)\./) || [,'YOUR_PROJECT'])[1];
+const urls = {
+    u1: base + '/api/google_assistant',
+    u2: base + '/auth/authorize',
+    u3: base + '/auth/token',
+    u4: 'https://oauth-redirect.googleusercontent.com/r/' + pid,
+    u5: base + '/local-sdk/app.js'
+};
+const deep = 'https://home.google.com/home-app/?deeplink=' + encodeURIComponent('setup/ha_linking?agent_id=' + pid);
+
+document.getElementById('pid').textContent = pid;
+Object.entries(urls).forEach(([id, url]) => document.getElementById(id).textContent = url);
+document.getElementById('deep-link').href = deep;
+
+// QR codes (client-side, no external API)
+function makeQR(canvas, text) {
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    const size = 150, cells = qr.getModuleCount(), cell = size / cells;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.height = size;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#1a1a1a';
+    for (let r = 0; r < cells; r++)
+        for (let c = 0; c < cells; c++)
+            if (qr.isDark(r, c)) ctx.fillRect(c * cell, r * cell, cell, cell);
+}
+makeQR(document.getElementById('qr-deep'), deep);
+
+// Copy buttons
+document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.onclick = async () => {
+        const text = document.getElementById(btn.dataset.target).textContent;
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    };
+});
+</script>
+</body>
+</html>
