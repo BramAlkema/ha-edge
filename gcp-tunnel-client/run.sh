@@ -105,8 +105,9 @@ build_chisel_args() {
     # nginx on Cloud Run listens on :8080, proxies HTTP to :9001
     # chisel listens on :9000 for WebSocket control
     # Format: R:remote_port:local_host:local_port
-    # Reverse tunnel: server listens on 9001, forwards to client's localhost:LOCAL_PORT
-    CHISEL_ARGS+=("R:9001:localhost:${LOCAL_PORT}")
+    # Reverse tunnel: server listens on 9001, forwards to client's 127.0.0.1:LOCAL_PORT
+    # Use 127.0.0.1 explicitly (not localhost) to avoid IPv6 resolution issues
+    CHISEL_ARGS+=("R:9001:127.0.0.1:${LOCAL_PORT}")
 }
 
 # Calculate backoff with jitter
@@ -147,7 +148,7 @@ run_tunnel() {
     bashio::log.info "User: $AUTH_USER"
     bashio::log.info "Local port: $LOCAL_PORT"
     bashio::log.info "Keepalive: $KEEPALIVE"
-    bashio::log.info "Tunnel: R:9001:localhost:${LOCAL_PORT}"
+    bashio::log.info "Tunnel: R:9001:127.0.0.1:${LOCAL_PORT}"
 
     # Start chisel in background
     /usr/local/bin/chisel "${CHISEL_ARGS[@]}" &

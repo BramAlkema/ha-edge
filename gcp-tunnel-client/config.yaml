@@ -41,7 +41,8 @@ ports: {}
 ports_description: {}
 
 # Network access required for tunnel
-host_network: false
+# Use host network to avoid Docker network issues with WebSocket
+host_network: true
 
 # Map config folder for potential future use
 map:
