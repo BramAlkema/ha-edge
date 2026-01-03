@@ -39,6 +39,13 @@ RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))  # 1 minute
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # Optional external webhook
 LOG_REQUESTS = os.environ.get("LOG_REQUESTS", "true").lower() == "true"
 
+# Remote UI toggle - controlled via /edge/remote-ui endpoint
+# Default from env var, can be changed at runtime by HA add-on
+remote_ui_settings = {
+    "enabled": os.environ.get("REMOTE_UI_ENABLED", "").lower() == "true",
+    "updated_at": time.time()
+}
+
 # Caches
 sync_cache = {}  # {user_id: {response, expires_at}}
 query_cache = {}  # {device_id: {state, updated_at}}
@@ -346,6 +353,58 @@ def clear_cache():
         query_cache.clear()
     logger.info("Cache cleared")
     return jsonify({"status": "cleared"})
+
+
+@app.route("/edge/remote-ui", methods=["GET", "POST"])
+def remote_ui_toggle():
+    """Get or set remote UI access.
+
+    GET: Returns current setting
+    POST: Set enabled state (requires auth header matching tunnel auth)
+
+    The HA add-on calls this on startup to sync the setting.
+    """
+    if request.method == "GET":
+        return jsonify({
+            "enabled": remote_ui_settings["enabled"],
+            "updated_at": remote_ui_settings["updated_at"]
+        })
+
+    # POST - update setting
+    # Authenticate with same auth as tunnel (basic auth)
+    auth = request.authorization
+    expected_auth = os.environ.get("AUTH", "").split(":", 1)
+
+    if len(expected_auth) == 2:
+        if not auth or auth.username != expected_auth[0] or auth.password != expected_auth[1]:
+            return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    enabled = data.get("enabled", False)
+
+    remote_ui_settings["enabled"] = bool(enabled)
+    remote_ui_settings["updated_at"] = time.time()
+
+    logger.info(f"Remote UI {'enabled' if enabled else 'disabled'}")
+    return jsonify({
+        "enabled": remote_ui_settings["enabled"],
+        "updated_at": remote_ui_settings["updated_at"]
+    })
+
+
+@app.route("/edge/remote-ui/check", methods=["GET"])
+def remote_ui_check():
+    """Quick check for nginx auth_request - returns 200 if enabled, 403 if disabled.
+
+    Always allows WebSocket upgrades through (for Chisel tunnel).
+    """
+    # Always allow websocket connections (Chisel tunnel control channel)
+    if request.headers.get("X-Original-Upgrade", "").lower() == "websocket":
+        return "", 200
+
+    if remote_ui_settings["enabled"]:
+        return "", 200
+    return "Remote UI disabled", 403
 
 
 @app.route("/health", methods=["GET"])

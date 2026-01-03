@@ -357,6 +357,34 @@ show_setup_instructions() {
     done
 }
 
+# Sync remote UI setting to Cloud Run
+sync_remote_ui_setting() {
+    local remote_ui_enabled
+    remote_ui_enabled=$(bashio::config 'remote_ui_enabled')
+
+    # Default to false if not set
+    if bashio::var.is_empty "$remote_ui_enabled"; then
+        remote_ui_enabled="false"
+    fi
+
+    bashio::log.info "Remote UI: Setting to $remote_ui_enabled"
+
+    # Call edge proxy endpoint to set the value
+    # Uses same auth as tunnel
+    local response
+    response=$(curl -s -X POST \
+        -u "${AUTH_USER}:${AUTH_PASS}" \
+        -H "Content-Type: application/json" \
+        -d "{\"enabled\": $remote_ui_enabled}" \
+        "${SERVER_URL}/edge/remote-ui" 2>/dev/null || echo "error")
+
+    if echo "$response" | grep -q "enabled"; then
+        bashio::log.info "Remote UI: Synced successfully"
+    else
+        bashio::log.warning "Remote UI: Failed to sync setting (will retry on next connect)"
+    fi
+}
+
 # Read and validate configuration
 read_config() {
     SERVER_URL=$(bashio::config 'server_url')
@@ -635,6 +663,9 @@ main() {
         bashio::log.fatal "Failed to start nginx proxy"
         exit 1
     fi
+
+    # Sync remote UI setting to Cloud Run
+    sync_remote_ui_setting
 
     # Main reconnect loop
     while true; do
